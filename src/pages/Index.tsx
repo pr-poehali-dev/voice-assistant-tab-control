@@ -52,23 +52,31 @@ const VOICE_COMMANDS_LIST = [
   "Открой настройки",
 ];
 
+const WAVE_HEIGHTS = [1, 0.5, 0.8, 1, 0.6, 0.9, 0.4, 0.7, 1, 0.5];
+
 function WaveVisualizer({ active }: { active: boolean }) {
   return (
     <div className="flex items-center gap-[3px] h-8">
-      {[1, 0.5, 0.8, 1, 0.6, 0.9, 0.4, 0.7, 1, 0.5].map((h, i) => (
-        <div
-          key={i}
-          className="w-[3px] rounded-full transition-all duration-300"
-          style={{
-            height: active ? `${h * 26}px` : "4px",
-            background: active
-              ? `rgba(224, 85, 116, ${0.5 + h * 0.5})`
-              : "rgba(255,255,255,0.15)",
-            animation: active ? `wave-bar ${0.6 + i * 0.05}s ease-in-out infinite` : "none",
-            animationDelay: `${i * 0.07}s`,
-          }}
-        />
-      ))}
+      {WAVE_HEIGHTS.map((h, i) => {
+        // Объединяем animation и animationDelay в одно свойство animation чтобы избежать React warning
+        const animValue = active
+          ? `wave-bar ${0.6 + i * 0.05}s ease-in-out ${i * 0.07}s infinite`
+          : "none";
+        return (
+          <div
+            key={i}
+            className="w-[3px] rounded-full"
+            style={{
+              height: active ? `${h * 26}px` : "4px",
+              background: active
+                ? `rgba(224, 85, 116, ${0.5 + h * 0.5})`
+                : "rgba(255,255,255,0.15)",
+              transition: active ? "none" : "height 0.3s, background 0.3s",
+              animation: animValue,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -308,20 +316,29 @@ export default function Index() {
                 <WaveVisualizer active={isListening} />
                 <button
                   onClick={toggle}
-                  disabled={!isSupported}
-                  className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-3 transition-all active:scale-95 text-white text-[11px] font-medium font-golos disabled:opacity-40"
+                  className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-3 transition-all active:scale-95 text-white text-[11px] font-medium font-golos"
                   style={{
                     background: isListening
                       ? "linear-gradient(135deg, #e05574, #c0375a)"
-                      : "rgba(255,255,255,0.07)",
-                    border: isListening ? "none" : "1px solid rgba(255,255,255,0.1)",
+                      : error
+                        ? "rgba(224,85,116,0.15)"
+                        : "rgba(255,255,255,0.07)",
+                    border: isListening
+                      ? "none"
+                      : error
+                        ? "1px solid rgba(224,85,116,0.4)"
+                        : "1px solid rgba(255,255,255,0.1)",
                     boxShadow: isListening ? "0 4px 16px var(--glow-red)" : "none",
                   }}
-                  title={!isSupported ? "Браузер не поддерживает распознавание речи" : ""}
                 >
-                  <Icon name={isListening ? "MicOff" : "Mic"} size={12} />
-                  {isListening ? "Стоп" : isSupported ? "Слушать" : "Не поддерж."}
+                  <Icon name={isListening ? "MicOff" : error ? "MicOff" : "Mic"} size={12} />
+                  {isListening ? "Стоп" : error ? "Повторить" : !isSupported ? "Нет API" : "Слушать"}
                 </button>
+                {error && (
+                  <p className="text-[9px] font-golos leading-tight" style={{ color: "rgba(224,85,116,0.8)" }}>
+                    {error}
+                  </p>
+                )}
               </div>
             </div>
 

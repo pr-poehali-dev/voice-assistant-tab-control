@@ -43,22 +43,24 @@ export function detectCommand(transcript: string): string | null {
   return null;
 }
 
+// Синхронная проверка — кнопка активна сразу без ожидания useEffect
+function getSR(): typeof SpeechRecognition | null {
+  if (typeof window === "undefined") return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 export function useSpeechRecognition({ onResult, onCommand, lang = "ru-RU" }: UseSpeechRecognitionOptions = {}) {
   const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
+  // Вычисляем синхронно при инициализации стейта
+  const [isSupported] = useState<boolean>(() => getSR() !== null);
   const [interimText, setInterimText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldListenRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) setIsSupported(true);
-  }, []);
-
   const createRecognition = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SR = getSR();
     if (!SR) return null;
 
     const recognition = new SR();
@@ -88,14 +90,16 @@ export function useSpeechRecognition({ onResult, onCommand, lang = "ru-RU" }: Us
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === "not-allowed") {
-        setError("Нет доступа к микрофону");
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setError("Разреши микрофон в браузере (значок 🔒 в адресной строке)");
         shouldListenRef.current = false;
         setIsListening(false);
       } else if (event.error === "no-speech") {
-        // Нормальное поведение — авто-рестарт
+        // Нормально — авто-рестарт
+      } else if (event.error === "network") {
+        setError("Ошибка сети — нужен интернет для Speech API");
       } else {
-        setError(event.error);
+        setError(`Ошибка микрофона: ${event.error}`);
       }
     };
 
@@ -116,7 +120,8 @@ export function useSpeechRecognition({ onResult, onCommand, lang = "ru-RU" }: Us
   }, [lang, onResult, onCommand]);
 
   const start = useCallback(() => {
-    if (!isSupported) return;
+    // Перепроверяем на случай если isSupported был вычислен до загрузки браузерного API
+    if (!getSR()) return;
     setError(null);
     shouldListenRef.current = true;
 
