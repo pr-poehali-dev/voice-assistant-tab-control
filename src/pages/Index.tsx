@@ -1,6 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Icon from "@/components/ui/icon";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+
+// Тип Electron API, прокинутого через preload.js
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron: boolean;
+      launchApp: (app: string) => Promise<{ success: boolean; error?: string }>;
+      switchTab: (dir: "next" | "prev") => Promise<{ success: boolean }>;
+      closeTab: () => Promise<{ success: boolean }>;
+      getWindows: () => Promise<Array<{ Name: string; MainWindowTitle: string }>>;
+      moveWindow: (delta: { deltaX: number; deltaY: number }) => void;
+      minimizeWindow: () => void;
+      closeApp: () => void;
+    };
+  }
+}
+
+const isElectron = (): boolean => !!window.electronAPI?.isElectron;
 
 const ANIME_IMG = "https://cdn.poehali.dev/projects/9ef22dbd-5052-4a85-92c0-ddfa03cf9082/files/659450f2-f3d7-4609-b8bd-057c34b1758e.jpg";
 
@@ -35,9 +53,9 @@ const APPS: AppItem[] = [
   { name: "Браузер", icon: "Globe", key: "browser", url: "https://google.com" },
   { name: "Терминал", icon: "Terminal", key: "terminal" },
   { name: "Настройки", icon: "Settings", key: "settings" },
-  { name: "Файлы", icon: "Folder", key: "files" },
+  { name: "Проводник", icon: "Folder", key: "explorer" },
   { name: "Музыка", icon: "Music", key: "open_music", url: "https://music.yandex.ru" },
-  { name: "Заметки", icon: "FileText", key: "open_notes" },
+  { name: "Калькулятор", icon: "Calculator", key: "calc" },
 ];
 
 const VOICE_COMMANDS_LIST = [
@@ -105,6 +123,10 @@ export default function Index() {
   const [lastFinalText, setLastFinalText] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
   const [commandFeedback, setCommandFeedback] = useState<string | null>(null);
+  const inElectron = isElectron();
+
+  // Drag окна (только в Electron)
+  const dragRef = useRef<{ startX: number; startY: number } | null>(null);
 
   const unreadCount = messages.filter((m) => m.unread).length;
 
@@ -113,56 +135,87 @@ export default function Index() {
     setTimeout(() => setCommandFeedback(null), 2500);
   }, []);
 
-  const handleCommand = useCallback((cmd: string) => {
-    switch (cmd) {
-      case "browser":
-        window.open("https://google.com", "_blank");
-        showFeedback("Открываю браузер...");
-        break;
-      case "tab_next":
-        showFeedback("Следующая вкладка ▶");
-        break;
-      case "tab_prev":
-        showFeedback("◀ Предыдущая вкладка");
-        break;
-      case "tab_close":
-        showFeedback("✕ Закрываю вкладку");
-        window.close();
-        break;
-      case "open_telegram":
-        window.open("https://web.telegram.org", "_blank");
-        showFeedback("Открываю Telegram...");
-        break;
-      case "open_discord":
-        window.open("https://discord.com/app", "_blank");
-        showFeedback("Открываю Discord...");
-        break;
-      case "read_messages":
-        setActiveTab("messages");
-        showFeedback("Показываю сообщения");
-        break;
-      case "open_music":
-        window.open("https://music.yandex.ru", "_blank");
-        showFeedback("Запускаю музыку...");
-        break;
-      case "open_settings":
-        setActiveTab("apps");
-        showFeedback("Открываю настройки");
-        break;
-      case "open_files":
-        setActiveTab("apps");
-        showFeedback("Открываю файлы");
-        break;
-      case "open_terminal":
-        setActiveTab("apps");
-        showFeedback("Терминал");
-        break;
-      case "open_notes":
-        setActiveTab("apps");
-        showFeedback("Открываю заметки");
-        break;
+  // Запуск приложения: через Electron IPC или window.open
+  const launchApp = useCallback(async (key: string, url?: string) => {
+    if (inElectron && window.electronAPI) {
+      const result = await window.electronAPI.launchApp(key);
+      if (!result.success && url) window.electronAPI.launchApp(`start ${url}`);
+    } else if (url) {
+      window.open(url, "_blank");
     }
-  }, [showFeedback]);
+  }, [inElectron]);
+
+  const handleCommand = useCallback((cmd: string) => {
+    if (inElectron && window.electronAPI) {
+      // Electron: реальные системные действия
+      switch (cmd) {
+        case "browser":
+          window.electronAPI.launchApp("browser");
+          showFeedback("Открываю Chrome...");
+          break;
+        case "tab_next":
+          window.electronAPI.switchTab("next");
+          showFeedback("Следующая вкладка ▶");
+          break;
+        case "tab_prev":
+          window.electronAPI.switchTab("prev");
+          showFeedback("◀ Предыдущая вкладка");
+          break;
+        case "tab_close":
+          window.electronAPI.closeTab();
+          showFeedback("✕ Закрываю вкладку");
+          break;
+        case "open_telegram":
+          window.electronAPI.launchApp("telegram");
+          showFeedback("Открываю Telegram...");
+          break;
+        case "open_discord":
+          window.electronAPI.launchApp("discord");
+          showFeedback("Открываю Discord...");
+          break;
+        case "read_messages":
+          setActiveTab("messages");
+          showFeedback("Показываю сообщения");
+          break;
+        case "open_music":
+          window.electronAPI.launchApp("music");
+          showFeedback("Запускаю музыку...");
+          break;
+        case "open_settings":
+          window.electronAPI.launchApp("settings");
+          showFeedback("Открываю настройки Windows...");
+          break;
+        case "open_files":
+          window.electronAPI.launchApp("explorer");
+          showFeedback("Открываю проводник...");
+          break;
+        case "open_terminal":
+          window.electronAPI.launchApp("terminal");
+          showFeedback("Открываю терминал...");
+          break;
+        case "open_notes":
+          window.electronAPI.launchApp("notepad");
+          showFeedback("Открываю блокнот...");
+          break;
+      }
+    } else {
+      // Веб-версия: открываем в браузере
+      switch (cmd) {
+        case "browser": window.open("https://google.com", "_blank"); showFeedback("Открываю браузер..."); break;
+        case "tab_next": showFeedback("Следующая вкладка ▶ (только в Electron)"); break;
+        case "tab_prev": showFeedback("◀ Предыдущая вкладка (только в Electron)"); break;
+        case "tab_close": showFeedback("✕ Закрытие вкладок (только в Electron)"); break;
+        case "open_telegram": window.open("https://web.telegram.org", "_blank"); showFeedback("Открываю Telegram..."); break;
+        case "open_discord": window.open("https://discord.com/app", "_blank"); showFeedback("Открываю Discord..."); break;
+        case "read_messages": setActiveTab("messages"); showFeedback("Показываю сообщения"); break;
+        case "open_music": window.open("https://music.yandex.ru", "_blank"); showFeedback("Запускаю музыку..."); break;
+        case "open_settings": setActiveTab("apps"); showFeedback("Настройки Windows (только в Electron)"); break;
+        case "open_files": setActiveTab("apps"); showFeedback("Проводник (только в Electron)"); break;
+        case "open_terminal": setActiveTab("apps"); showFeedback("Терминал (только в Electron)"); break;
+        case "open_notes": setActiveTab("apps"); showFeedback("Блокнот (только в Electron)"); break;
+      }
+    }
+  }, [inElectron, showFeedback]);
 
   const { isListening, isSupported, interimText, error, toggle } = useSpeechRecognition({
     onResult: ({ transcript, isFinal }) => {
@@ -263,14 +316,37 @@ export default function Index() {
 
           {/* Header card */}
           <div className="glass-panel rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+            <div
+              className="flex items-center justify-between px-4 pt-3 pb-1 select-none"
+              style={{ cursor: inElectron ? "grab" : "default" }}
+              onMouseDown={inElectron ? (e) => {
+                if ((e.target as HTMLElement).closest("button")) return;
+                dragRef.current = { startX: e.screenX, startY: e.screenY };
+                const onMove = (ev: MouseEvent) => {
+                  if (!dragRef.current) return;
+                  window.electronAPI?.moveWindow({
+                    deltaX: ev.screenX - dragRef.current.startX,
+                    deltaY: ev.screenY - dragRef.current.startY,
+                  });
+                  dragRef.current = { startX: ev.screenX, startY: ev.screenY };
+                };
+                const onUp = () => {
+                  dragRef.current = null;
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              } : undefined}
+            >
               <div>
                 <p className="font-unbounded text-[9px] font-light tracking-widest uppercase"
-                  style={{ color: "var(--red)" }}>Ассистент</p>
+                  style={{ color: "var(--red)" }}>
+                  {inElectron ? "Windows · Ассистент" : "Ассистент"}
+                </p>
                 <h1 className="font-unbounded text-base font-semibold text-white leading-tight">Юки</h1>
               </div>
-              <div className="flex items-center gap-1.5">
-                {/* Mic status indicator */}
+              <div className="flex items-center gap-1">
                 {isListening && (
                   <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
                     style={{ background: "rgba(224,85,116,0.1)" }}>
@@ -279,12 +355,34 @@ export default function Index() {
                     <span className="text-[9px] font-golos" style={{ color: "var(--red)" }}>LIVE</span>
                   </div>
                 )}
+                {/* Свернуть виджет */}
                 <button
                   onClick={() => setIsExpanded(false)}
                   className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+                  title="Свернуть"
                 >
-                  <Icon name="Minus" size={14} className="text-white/40" />
+                  <Icon name="Minus" size={13} className="text-white/40" />
                 </button>
+                {/* Свернуть окно (Electron) */}
+                {inElectron && (
+                  <button
+                    onClick={() => window.electronAPI?.minimizeWindow()}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+                    title="В трей"
+                  >
+                    <Icon name="ChevronDown" size={13} className="text-white/40" />
+                  </button>
+                )}
+                {/* Закрыть приложение (Electron) */}
+                {inElectron && (
+                  <button
+                    onClick={() => window.electronAPI?.closeApp()}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-red-500/20"
+                    title="Закрыть"
+                  >
+                    <Icon name="X" size={13} className="text-white/40" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -457,10 +555,8 @@ export default function Index() {
                 <div className="grid grid-cols-3 gap-1.5">
                   {APPS.map((app) => (
                     <button key={app.key}
-                      onClick={() => {
-                        if (app.url) window.open(app.url, "_blank");
-                        else showFeedback(`Открываю ${app.name}...`);
-                      }}
+                      onClick={() => launchApp(app.key, app.url)}
+                      title={!inElectron && !app.url ? "Только в Electron" : undefined}
                       className="flex flex-col items-center gap-1.5 rounded-xl py-2.5 px-1 transition-all active:scale-95"
                       style={{
                         background: "rgba(255,255,255,0.04)",
@@ -487,7 +583,7 @@ export default function Index() {
                 <div className="mt-2.5 pt-2.5 flex items-center gap-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                   <Icon name="Info" size={11} style={{ color: "rgba(255,255,255,0.15)", flexShrink: 0 }} />
                   <p className="text-[9px] font-golos" style={{ color: "rgba(255,255,255,0.2)" }}>
-                    Голосом: «Открой браузер»
+                    {inElectron ? "Полный доступ к Windows ✓" : "Голосом: «Открой браузер»"}
                   </p>
                 </div>
               </div>
