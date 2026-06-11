@@ -123,6 +123,9 @@ export default function Index() {
   const [lastFinalText, setLastFinalText] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
   const [commandFeedback, setCommandFeedback] = useState<string | null>(null);
+  // Прозрачность фона панелей: 0 = полностью прозрачный, 100 = непрозрачный
+  const [bgOpacity, setBgOpacity] = useState(92);
+  const [showOpacitySlider, setShowOpacitySlider] = useState(false);
   const inElectron = isElectron();
 
   // Drag окна (только в Electron)
@@ -307,15 +310,59 @@ export default function Index() {
 
           {/* Command feedback toast */}
           {commandFeedback && (
-            <div className="glass-panel rounded-xl px-3 py-2 animate-slide-up flex items-center gap-2"
-              style={{ border: "1px solid rgba(224,85,116,0.3)" }}>
+            <div className="rounded-xl px-3 py-2 animate-message-in flex items-center gap-2"
+              style={{
+                background: `rgba(19,21,28,${bgOpacity / 100})`,
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(224,85,116,0.3)",
+              }}>
               <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--red)" }} />
               <span className="text-xs font-golos text-white/80">{commandFeedback}</span>
             </div>
           )}
 
+          {/* Opacity slider panel */}
+          {showOpacitySlider && (
+            <div className="rounded-2xl px-4 py-3 animate-opacity-panel"
+              style={{
+                background: `rgba(19,21,28,${bgOpacity / 100})`,
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid var(--border-subtle)",
+              }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9px] font-unbounded uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  Прозрачность фона
+                </span>
+                <span className="text-[10px] font-golos font-medium" style={{ color: "var(--red)" }}>
+                  {bgOpacity}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={bgOpacity}
+                onChange={(e) => setBgOpacity(Number(e.target.value))}
+                className="opacity-slider"
+                style={{ "--slider-pct": `${bgOpacity}%` } as React.CSSProperties}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[8px] font-golos" style={{ color: "rgba(255,255,255,0.2)" }}>прозрачный</span>
+                <span className="text-[8px] font-golos" style={{ color: "rgba(255,255,255,0.2)" }}>непрозрачный</span>
+              </div>
+            </div>
+          )}
+
           {/* Header card */}
-          <div className="glass-panel rounded-2xl overflow-hidden">
+          <div className="rounded-2xl overflow-hidden"
+            style={{
+              background: `rgba(19,21,28,${bgOpacity / 100})`,
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              border: "1px solid var(--border-subtle)",
+            }}>
             <div
               className="flex items-center justify-between px-4 pt-3 pb-1 select-none"
               style={{ cursor: inElectron ? "grab" : "default" }}
@@ -355,6 +402,18 @@ export default function Index() {
                     <span className="text-[9px] font-golos" style={{ color: "var(--red)" }}>LIVE</span>
                   </div>
                 )}
+                {/* Прозрачность фона */}
+                <button
+                  onClick={() => setShowOpacitySlider((v) => !v)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-white/10"
+                  title="Прозрачность фона"
+                  style={{
+                    background: showOpacitySlider ? "rgba(224,85,116,0.15)" : undefined,
+                    color: showOpacitySlider ? "var(--red)" : undefined,
+                  }}
+                >
+                  <Icon name="Sliders" size={12} className={showOpacitySlider ? "" : "text-white/40"} />
+                </button>
                 {/* Свернуть виджет */}
                 <button
                   onClick={() => setIsExpanded(false)}
@@ -470,7 +529,13 @@ export default function Index() {
           </div>
 
           {/* Content panel */}
-          <div className="glass-panel rounded-2xl overflow-hidden" key={activeTab}>
+          <div className="rounded-2xl overflow-hidden" key={activeTab}
+            style={{
+              background: `rgba(19,21,28,${bgOpacity / 100})`,
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              border: "1px solid var(--border-subtle)",
+            }}>
 
             {/* VOICE TAB */}
             {activeTab === "voice" && (

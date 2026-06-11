@@ -58,6 +58,14 @@
   }
 }
 
+/* ── 120fps: используем linear() easing + will-change для GPU-слоя ── */
+* {
+  /* Подсказываем браузеру задействовать compositor thread */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Все transition и animation переводим на GPU-свойства (transform, opacity) */
+
 /* Animations */
 @keyframes pulse-ring {
   0% {
@@ -94,24 +102,33 @@
   }
 }
 
+/* slide-up: быстрый старт, плавное торможение (spring-feel) */
 @keyframes slide-up {
-  from {
-    transform: translateY(20px);
+  0% {
+    transform: translateY(18px) scale(0.97);
     opacity: 0;
   }
-  to {
-    transform: translateY(0);
+  60% {
+    transform: translateY(-2px) scale(1.005);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
 
 @keyframes message-in {
-  from {
-    transform: translateX(30px);
+  0% {
+    transform: translateX(24px) scale(0.97);
     opacity: 0;
   }
-  to {
-    transform: translateX(0);
+  60% {
+    transform: translateX(-2px) scale(1.005);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
 }
@@ -128,33 +145,69 @@
   }
 }
 
-@keyframes scan-line {
+/* Ползунок прозрачности — всплывает снизу */
+@keyframes opacity-panel-in {
   0% {
-    top: 0%;
+    transform: translateY(8px) scale(0.97);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(-1px) scale(1.01);
+    opacity: 1;
   }
   100% {
-    top: 100%;
+    transform: translateY(0) scale(1);
+    opacity: 1;
   }
 }
 
 .animate-float {
-  animation: float 3s ease-in-out infinite;
+  animation: float 3s
+    linear(
+      0,
+      0.01,
+      0.04,
+      0.09,
+      0.16,
+      0.25,
+      0.36,
+      0.49,
+      0.64,
+      0.81,
+      1,
+      0.97,
+      0.94,
+      0.97,
+      1
+    )
+    infinite;
+  will-change: transform;
 }
 .animate-pulse-ring {
-  animation: pulse-ring 2s ease-in-out infinite;
+  animation: pulse-ring 2s
+    linear(0, 0.04, 0.16, 0.36, 0.64, 0.84, 0.94, 1, 0.97, 1) infinite;
+  will-change: transform, opacity;
 }
 .animate-slide-up {
-  animation: slide-up 0.4s ease-out forwards;
+  animation: slide-up 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
 }
 .animate-message-in {
-  animation: message-in 0.3s ease-out forwards;
+  animation: message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
 }
 .animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
 }
+.animate-opacity-panel {
+  animation: opacity-panel-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
 
 .wave-bar {
-  animation: wave-bar 0.8s ease-in-out infinite;
+  animation: wave-bar 0.8s
+    linear(0, 0.04, 0.16, 0.36, 0.64, 0.84, 0.94, 1, 0.97, 1) infinite;
+  will-change: transform;
 }
 .wave-bar:nth-child(1) {
   animation-delay: 0s;
@@ -170,6 +223,52 @@
 }
 .wave-bar:nth-child(5) {
   animation-delay: 0.05s;
+}
+
+/* Ползунок прозрачности — кастомный стиль */
+.opacity-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    var(--red) 0%,
+    var(--red) var(--slider-pct, 92%),
+    rgba(255, 255, 255, 0.12) var(--slider-pct, 92%),
+    rgba(255, 255, 255, 0.12) 100%
+  );
+}
+.opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 6px rgba(224, 85, 116, 0.6);
+  cursor: grab;
+  transition:
+    transform 0.12s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.12s;
+  will-change: transform;
+}
+.opacity-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.25);
+  box-shadow: 0 2px 12px rgba(224, 85, 116, 0.8);
+}
+.opacity-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  border: none;
+  box-shadow: 0 1px 6px rgba(224, 85, 116, 0.6);
+  cursor: grab;
 }
 
 .glass-panel {
