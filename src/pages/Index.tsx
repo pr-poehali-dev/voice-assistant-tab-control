@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 const ANIME_IMG = "https://cdn.poehali.dev/projects/9ef22dbd-5052-4a85-92c0-ddfa03cf9082/files/659450f2-f3d7-4609-b8bd-057c34b1758e.jpg";
 
@@ -19,6 +20,7 @@ interface AppItem {
   name: string;
   icon: string;
   key: string;
+  url?: string;
 }
 
 const DEMO_MESSAGES: Message[] = [
@@ -30,21 +32,24 @@ const DEMO_MESSAGES: Message[] = [
 ];
 
 const APPS: AppItem[] = [
-  { name: "Браузер", icon: "Globe", key: "browser" },
+  { name: "Браузер", icon: "Globe", key: "browser", url: "https://google.com" },
   { name: "Терминал", icon: "Terminal", key: "terminal" },
   { name: "Настройки", icon: "Settings", key: "settings" },
   { name: "Файлы", icon: "Folder", key: "files" },
-  { name: "Музыка", icon: "Music", key: "music" },
-  { name: "Заметки", icon: "FileText", key: "notes" },
+  { name: "Музыка", icon: "Music", key: "open_music", url: "https://music.yandex.ru" },
+  { name: "Заметки", icon: "FileText", key: "open_notes" },
 ];
 
-const VOICE_COMMANDS = [
+const VOICE_COMMANDS_LIST = [
   "Открой браузер",
   "Следующая вкладка",
-  "Прочитай сообщения",
-  "Открой Telegram",
+  "Предыдущая вкладка",
   "Закрой вкладку",
+  "Открой Telegram",
+  "Открой Discord",
+  "Прочитай сообщения",
   "Запусти музыку",
+  "Открой настройки",
 ];
 
 function WaveVisualizer({ active }: { active: boolean }) {
@@ -53,9 +58,9 @@ function WaveVisualizer({ active }: { active: boolean }) {
       {[1, 0.5, 0.8, 1, 0.6, 0.9, 0.4, 0.7, 1, 0.5].map((h, i) => (
         <div
           key={i}
-          className="w-[3px] rounded-full transition-all duration-300 wave-bar"
+          className="w-[3px] rounded-full transition-all duration-300"
           style={{
-            height: active ? `${h * 28}px` : "4px",
+            height: active ? `${h * 26}px` : "4px",
             background: active
               ? `rgba(224, 85, 116, ${0.5 + h * 0.5})`
               : "rgba(255,255,255,0.15)",
@@ -86,43 +91,104 @@ function PlatformBadge({ platform }: { platform: Platform }) {
 }
 
 export default function Index() {
-  const [isListening, setIsListening] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("voice");
   const [messages, setMessages] = useState<Message[]>(DEMO_MESSAGES);
-  const [lastCommand, setLastCommand] = useState("Скажи что-нибудь...");
+  const [displayText, setDisplayText] = useState("Нажми микрофон...");
+  const [lastFinalText, setLastFinalText] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const cmdIdxRef = useRef(0);
+  const [commandFeedback, setCommandFeedback] = useState<string | null>(null);
 
   const unreadCount = messages.filter((m) => m.unread).length;
 
-  const toggleListen = useCallback(() => {
-    setIsListening((prev) => {
-      if (!prev) {
-        setLastCommand("Слушаю...");
-        intervalRef.current = setInterval(() => {
-          cmdIdxRef.current = (cmdIdxRef.current + 1) % VOICE_COMMANDS.length;
-          setLastCommand(`«${VOICE_COMMANDS[cmdIdxRef.current]}»`);
-        }, 2000);
-      } else {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        setLastCommand("Готова к работе");
-      }
-      return !prev;
-    });
+  const showFeedback = useCallback((text: string) => {
+    setCommandFeedback(text);
+    setTimeout(() => setCommandFeedback(null), 2500);
   }, []);
 
+  const handleCommand = useCallback((cmd: string) => {
+    switch (cmd) {
+      case "browser":
+        window.open("https://google.com", "_blank");
+        showFeedback("Открываю браузер...");
+        break;
+      case "tab_next":
+        showFeedback("Следующая вкладка ▶");
+        break;
+      case "tab_prev":
+        showFeedback("◀ Предыдущая вкладка");
+        break;
+      case "tab_close":
+        showFeedback("✕ Закрываю вкладку");
+        window.close();
+        break;
+      case "open_telegram":
+        window.open("https://web.telegram.org", "_blank");
+        showFeedback("Открываю Telegram...");
+        break;
+      case "open_discord":
+        window.open("https://discord.com/app", "_blank");
+        showFeedback("Открываю Discord...");
+        break;
+      case "read_messages":
+        setActiveTab("messages");
+        showFeedback("Показываю сообщения");
+        break;
+      case "open_music":
+        window.open("https://music.yandex.ru", "_blank");
+        showFeedback("Запускаю музыку...");
+        break;
+      case "open_settings":
+        setActiveTab("apps");
+        showFeedback("Открываю настройки");
+        break;
+      case "open_files":
+        setActiveTab("apps");
+        showFeedback("Открываю файлы");
+        break;
+      case "open_terminal":
+        setActiveTab("apps");
+        showFeedback("Терминал");
+        break;
+      case "open_notes":
+        setActiveTab("apps");
+        showFeedback("Открываю заметки");
+        break;
+    }
+  }, [showFeedback]);
+
+  const { isListening, isSupported, interimText, error, toggle } = useSpeechRecognition({
+    onResult: ({ transcript, isFinal }) => {
+      if (isFinal) {
+        setLastFinalText(transcript);
+        setDisplayText(`«${transcript}»`);
+      } else {
+        setDisplayText(transcript);
+      }
+    },
+    onCommand: handleCommand,
+  });
+
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+    if (!isListening && !error) {
+      if (lastFinalText) {
+        setDisplayText(`«${lastFinalText}»`);
+      } else {
+        setDisplayText("Нажми микрофон...");
+      }
+    }
+    if (isListening && !interimText && !lastFinalText) {
+      setDisplayText("Слушаю...");
+    }
+  }, [isListening, interimText, lastFinalText, error]);
+
+  useEffect(() => {
+    if (error) setDisplayText(error);
+  }, [error]);
 
   const markRead = (id: number) => {
     setMessages((prev) => prev.map((m) => m.id === id ? { ...m, unread: false } : m));
   };
 
-  // Desktop background for demo
   const bgStyle: React.CSSProperties = {
     position: "fixed",
     inset: 0,
@@ -131,7 +197,6 @@ export default function Index() {
 
   return (
     <div style={bgStyle}>
-      {/* Subtle grid bg */}
       <div className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
@@ -139,7 +204,6 @@ export default function Index() {
         }}
       />
 
-      {/* Center hint */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="text-center">
           <p className="font-unbounded text-[11px] tracking-widest uppercase mb-2"
@@ -180,6 +244,15 @@ export default function Index() {
       {isExpanded && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 animate-slide-up" style={{ width: "300px" }}>
 
+          {/* Command feedback toast */}
+          {commandFeedback && (
+            <div className="glass-panel rounded-xl px-3 py-2 animate-slide-up flex items-center gap-2"
+              style={{ border: "1px solid rgba(224,85,116,0.3)" }}>
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--red)" }} />
+              <span className="text-xs font-golos text-white/80">{commandFeedback}</span>
+            </div>
+          )}
+
           {/* Header card */}
           <div className="glass-panel rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-3 pb-1">
@@ -188,21 +261,34 @@ export default function Index() {
                   style={{ color: "var(--red)" }}>Ассистент</p>
                 <h1 className="font-unbounded text-base font-semibold text-white leading-tight">Юки</h1>
               </div>
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
-              >
-                <Icon name="Minus" size={14} className="text-white/40" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Mic status indicator */}
+                {isListening && (
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+                    style={{ background: "rgba(224,85,116,0.1)" }}>
+                    <div className="w-1.5 h-1.5 rounded-full animate-pulse-ring"
+                      style={{ background: "var(--red)" }} />
+                    <span className="text-[9px] font-golos" style={{ color: "var(--red)" }}>LIVE</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => setIsExpanded(false)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+                >
+                  <Icon name="Minus" size={14} className="text-white/40" />
+                </button>
+              </div>
             </div>
 
             {/* Character + voice */}
             <div className="flex items-end px-4 pb-3 gap-3">
-              <div className="relative w-18 h-22 rounded-xl overflow-hidden flex-shrink-0"
+              <div className="relative rounded-xl overflow-hidden flex-shrink-0"
                 style={{
                   width: "72px",
                   height: "88px",
-                  border: "1px solid rgba(224,85,116,0.25)",
+                  border: `1px solid ${isListening ? "rgba(224,85,116,0.5)" : "rgba(224,85,116,0.2)"}`,
+                  transition: "border-color 0.3s",
+                  boxShadow: isListening ? "0 0 16px rgba(224,85,116,0.2)" : "none",
                 }}>
                 <img
                   src={ANIME_IMG}
@@ -214,14 +300,16 @@ export default function Index() {
               </div>
 
               <div className="flex-1 flex flex-col gap-2 min-w-0">
-                <p className="text-[11px] leading-tight font-golos"
-                  style={{ color: isListening ? "var(--pink)" : "rgba(255,255,255,0.45)" }}>
-                  {lastCommand}
+                <p className="text-[11px] leading-tight font-golos truncate"
+                  style={{ color: isListening ? "var(--pink)" : "rgba(255,255,255,0.45)" }}
+                  title={displayText}>
+                  {displayText}
                 </p>
                 <WaveVisualizer active={isListening} />
                 <button
-                  onClick={toggleListen}
-                  className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-3 transition-all active:scale-95 text-white text-[11px] font-medium font-golos"
+                  onClick={toggle}
+                  disabled={!isSupported}
+                  className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 px-3 transition-all active:scale-95 text-white text-[11px] font-medium font-golos disabled:opacity-40"
                   style={{
                     background: isListening
                       ? "linear-gradient(135deg, #e05574, #c0375a)"
@@ -229,9 +317,10 @@ export default function Index() {
                     border: isListening ? "none" : "1px solid rgba(255,255,255,0.1)",
                     boxShadow: isListening ? "0 4px 16px var(--glow-red)" : "none",
                   }}
+                  title={!isSupported ? "Браузер не поддерживает распознавание речи" : ""}
                 >
                   <Icon name={isListening ? "MicOff" : "Mic"} size={12} />
-                  {isListening ? "Стоп" : "Слушать"}
+                  {isListening ? "Стоп" : isSupported ? "Слушать" : "Не поддерж."}
                 </button>
               </div>
             </div>
@@ -274,7 +363,7 @@ export default function Index() {
                 <p className="text-[9px] font-medium uppercase tracking-widest mb-2 font-unbounded"
                   style={{ color: "rgba(255,255,255,0.2)" }}>Доступные команды</p>
                 <div className="flex flex-col gap-1">
-                  {VOICE_COMMANDS.map((cmd, i) => (
+                  {VOICE_COMMANDS_LIST.map((cmd, i) => (
                     <div key={i}
                       className="flex items-center gap-2 rounded-xl px-3 py-1.5 cursor-pointer transition-all"
                       style={{ background: "rgba(255,255,255,0.03)" }}
@@ -290,13 +379,11 @@ export default function Index() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-2.5 pt-2.5 flex gap-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                  {["← Назад", "→ Вперёд", "✕ Закрыть"].map((h) => (
-                    <span key={h} className="text-[9px] px-1.5 py-0.5 rounded-lg font-golos"
-                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>
-                      {h}
-                    </span>
-                  ))}
+                <div className="mt-2.5 pt-2.5 flex items-center gap-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                  <Icon name="Info" size={11} style={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+                  <p className="text-[9px] font-golos" style={{ color: "rgba(255,255,255,0.25)" }}>
+                    {isSupported ? "Работает в фоне пока включён микрофон" : "Chrome / Edge — для распознавания речи"}
+                  </p>
                 </div>
               </div>
             )}
@@ -353,15 +440,22 @@ export default function Index() {
                 <div className="grid grid-cols-3 gap-1.5">
                   {APPS.map((app) => (
                     <button key={app.key}
+                      onClick={() => {
+                        if (app.url) window.open(app.url, "_blank");
+                        else showFeedback(`Открываю ${app.name}...`);
+                      }}
                       className="flex flex-col items-center gap-1.5 rounded-xl py-2.5 px-1 transition-all active:scale-95"
-                      style={{ background: "rgba(255,255,255,0.04)" }}
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid transparent",
+                      }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.background = "rgba(224,85,116,0.07)";
-                        (e.currentTarget as HTMLButtonElement).style.border = "1px solid rgba(224,85,116,0.25)";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(224,85,116,0.25)";
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)";
-                        (e.currentTarget as HTMLButtonElement).style.border = "1px solid transparent";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
                       }}
                     >
                       <div className="w-7 h-7 rounded-xl flex items-center justify-center"
